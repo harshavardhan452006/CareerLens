@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateWithFallback } from '@/lib/gemini';
 import * as admin from 'firebase-admin';
-
-// Initialize Gemini AI with API key (simpler than Vertex AI for development)
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Helper to fetch from Google Custom Search
 async function fetchGoogleCareerSearch(apiKey: string, searchEngineId: string, query: string) {
@@ -47,10 +44,10 @@ async function fetchNews(apiKey: string, query: string) {
   }
 }
 
-// Summarize with Gemini AI
+// Summarize with Gemini
 async function summarizeWithGemini(combinedData: any) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
     
     const prompt = `You are an expert career analyst analyzing REAL-TIME data from multiple sources including Google Search results, Reddit discussions, and news articles.
     
@@ -83,17 +80,15 @@ async function summarizeWithGemini(combinedData: any) {
       }
     }`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const text = await generateWithFallback(prompt, { temperature: 0.5, maxOutputTokens: 4096 });
     
-    if (!text) throw new Error("No response from Gemini AI");
+    if (!text) throw new Error("No response from Gemini");
 
     // Clean up markdown code blocks if present
     const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(jsonStr);
   } catch (error) {
-    console.error("Gemini AI Summarization Error:", error);
+    console.error("Gemini Summarization Error:", error);
     // Fallback mock data if AI fails
     return {
       trendingSkills: [{ skill: "AI & ML (Fallback)", changePct: 10, evidence: ["System fallback due to AI error"] }],

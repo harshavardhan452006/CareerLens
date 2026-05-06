@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/app-layout';
 import { Toaster } from '@/components/ui/toaster';
 import { FirebaseProvider } from '@/lib/firebase-provider';
 import { GlobalBackgroundVideo } from '@/components/global-background-video';
+import { AnimationProvider } from '@/lib/animation-provider';
 
 export default function RootLayout({
   children,
@@ -20,19 +21,21 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-body antialiased bg-transparent" suppressHydrationWarning>
-        {/* Global Background Video - Fixed and Persistent Across All Routes */}
-        <GlobalBackgroundVideo />
+      <body className="font-body antialiased bg-slate-950" suppressHydrationWarning>
+        {/* Global Background Video - DISABLED for performance */}
+        {/* <GlobalBackgroundVideo /> */}
 
-        {/* Mesh Wave Overlay on top of video for extra visual depth */}
-        <div className="fixed top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+        {/* Mesh Wave Overlay - DISABLED for performance */}
+        {/* <div className="fixed top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
           <div className="mesh-wave-bg absolute inset-0 opacity-30" />
-        </div>
+        </div> */}
 
         {/* Main App Content - Rendered Above Video */}
         <div className="relative" style={{ zIndex: 10 }}>
           <FirebaseProvider>
-            <AppLayout>{children}</AppLayout>
+            <AnimationProvider>
+              <AppLayout>{children}</AppLayout>
+            </AnimationProvider>
             <Toaster />
           </FirebaseProvider>
         </div>

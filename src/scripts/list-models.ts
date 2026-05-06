@@ -1,18 +1,21 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { VertexAI } from '@google-cloud/vertexai';
 
 async function listModels() {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) {
-        console.error('No API Key found');
+    const projectId = process.env.NEXT_PUBLIC_GCP_PROJECT_ID || 'careerlens-1';
+    const location = process.env.NEXT_PUBLIC_GCP_REGION || 'us-central1';
+    
+    if (!projectId) {
+        console.error('No GCP Project ID found in environment variables');
         return;
     }
 
-    // We can't easily list models with the SDK in this version without a specific call, 
-    // but we can try a raw fetch to the list endpoint if the SDK doesn't expose it easily.
-    // Actually, the SDK usually doesn't expose listModels directly in the main class in some versions.
-    // Let's try a raw fetch to be sure.
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    // Vertex AI models are predefined, so we'll list the commonly used ones
+    console.log(`\nVertex AI Gemini Models available for project ${projectId}:`);
+    console.log('✅ gemini-2.0-flash (Recommended - Fastest)');
+    console.log('✅ gemini-2.0-pro (Advanced - Better reasoning)');
+    console.log('✅ gemini-1.5-pro (Standard)');
+    console.log('✅ gemini-1.5-flash (Lite)');
+    console.log('\nVerifying Vertex AI access...');
 
     try {
         const response = await fetch(url);

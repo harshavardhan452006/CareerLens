@@ -1,118 +1,105 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateWithFallback } from '@/lib/gemini';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 const CAREER_NAVIGATOR_PROMPT = `You are CareerLens AI — an expert career architect trained on global and Indian education pathways.
 
-Your task is to generate a complete multi-level "Career Path Tree" based on student's current grade, interests, and region.
+Your task is to generate a focused multi-level "Career Path Tree" based on the student's current grade, interests, and region.
 
-🎓 COVER ALL EDUCATION STREAMS:
+🎓 COVER RELEVANT EDUCATION STREAMS based on student interests:
+- Science streams (PCMC, PCMB, CS) for tech/medical interests
+- Commerce streams for business/finance interests  
+- Arts/Humanities for creative/law interests
+- Diploma/Polytechnic as alternate path
 
-GRADE 10 → STREAMS:
-• Science (PCMC, PCMB, PCME, PCMCs, Electronics, Biotech, CS)
-• Commerce (With Maths, Without Maths, CA Foundation)
-• Arts/Humanities (Psychology, Journalism, Law, Design)
-• Diploma/Polytechnic/ITI/Vocational (NSQF)
+💼 FOR EACH NODE INCLUDE (keep values concise):
+- label: short name (max 5 words)
+- summary: one sentence description
+- score: 0-100 match score
+- salaryRange: min/max in INR numbers only
+- topCompanies: max 3 company names
+- skills: max 4 skills
 
-EXAMS TO INCLUDE:
-• JEE Main/Advanced, NEET, KCET, COMEDK, BITSAT, CUET
-• CLAT, AILET, NID, NIFT, UCEED
-• CA Foundation, CS Executive
-• GATE, IIT-JAM, GMAT, GRE, SAT, TOEFL
-
-DEGREES (UG + PG):
-• BTech/BE (CSE, AI/ML, ECE, Mechanical, Civil, Aerospace, Robotics)
-• MBBS, BDS, BPT, Nursing, BPharm, PharmD
-• BCom, BBA, BMS, CA, CMA, CS, Actuarial Science
-• BA (Psych, Journalism, Law prep), BFA, B.Ed, B.Arch
-• BSc (Pure sciences, Data Science, Bioinformatics)
-
-CAREERS:
-• Tech: Software Engineer, Data Scientist, ML Engineer, DevOps, Cloud Architect, Cybersecurity Expert, Full-Stack Dev, AI Researcher
-• Medical: Doctor, Dentist, Physiotherapist, Nurse, Pharmacist, Medical Researcher
-• Business: CA, Consultant, Investment Banker, Financial Analyst, Entrepreneur, Product Manager, Marketing Manager
-• Creative: Designer, Architect, Animator, Content Creator, Journalist, Filmmaker
-• Government: IAS, IPS, IES, Bank PO, SSC, Defense
-
-💼 FOR EACH CAREER NODE INCLUDE:
-• Job roles (3-5 examples)
-• Required skills (ranked by importance)
-• Salary: Fresher (₹), Mid-level (₹), Senior (₹)
-• Top companies hiring (Indian + Global)
-• Demand trend: ↑23% YoY / ↓5% YoY
-• Future-proof rating: 1-10
-• Certifications: Google, AWS, Coursera, NPTEL
-• Recommended projects
-
-🎨 PERSONALIZATION LOGIC:
-• Match interests to paths (AI/ML → PCMC → BTech CSE/AI)
-• Score nodes 0-100 based on: interest match (40%) + market demand (30%) + salary potential (30%)
-• Add insight cards: "Science stream opens widest opportunities" / "AI/ML jobs growing 23% YoY"
-
-📊 OUTPUT EXACT JSON SCHEMA:
+📊 OUTPUT EXACT JSON SCHEMA — keep it compact:
 {
   "root": { "id": "root", "label": "Your Career Paths", "type": "root" },
   "nodes": [
     {
-      "id": "unique-node-id",
+      "id": "unique-id",
       "label": "Computer Science & AI",
-      "type": "stream|subject|exam|degree|career",
-      "level": "grade11|ug|pg|career",
+      "type": "stream",
+      "level": "grade11",
       "score": 95,
-      "summary": "Top choice for tech careers. High demand, excellent pay, remote-friendly.",
+      "summary": "Top choice for tech careers.",
       "metadata": {
         "durationYears": 4,
         "salaryRange": { "min": 400000, "max": 3500000 },
         "difficulty": "high",
         "demand": "high",
-        "demandTrend": "↑23% YoY",
+        "demandTrend": "rising",
         "futureProofRating": 9,
-        "topCompanies": ["Google", "Microsoft", "Amazon", "Flipkart", "TCS"]
+        "topCompanies": ["Google", "Microsoft", "TCS"]
       },
       "actions": {
-        "exams": ["JEE Main", "BITSAT", "VITEEE"],
-        "courses": ["BTech CSE", "BTech AI/ML", "BSc Computer Science"],
+        "exams": ["JEE Main", "BITSAT"],
+        "courses": ["BTech CSE", "BTech AI/ML"],
         "certifications": [
-          { "title": "AWS Solutions Architect", "platform": "AWS", "url": "https://aws.training" },
-          { "title": "Google Data Analytics", "platform": "Coursera", "url": "https://coursera.org/google" }
+          { "title": "AWS Cloud Practitioner", "platform": "AWS", "url": "https://aws.training" }
         ],
-        "skills": ["Python", "Data Structures", "Machine Learning", "Cloud Computing", "System Design"],
-        "projects": ["Build ML model", "Create web app", "Contribute to open source"]
+        "skills": ["Python", "Data Structures", "ML", "Cloud"],
+        "projects": ["Build ML model", "Create web app"]
       },
-      "children": ["node-id-1", "node-id-2"],
-      "sources": ["IEEE", "NASSCOM", "LinkedIn Jobs Report 2025"]
+      "children": ["child-id-1"],
+      "sources": ["NASSCOM 2025"]
     }
   ],
   "edges": [
     { "from": "root", "to": "node-id", "type": "leads_to", "label": "Best Match" }
   ],
   "insights": [
-    "Based on your AI/ML interest, Computer Science is the perfect fit",
-    "Tech careers offer highest starting salaries in India (₹4-15 LPA)",
-    "Remote work opportunities make tech careers location-independent"
+    "Tech careers offer highest starting salaries in India"
   ]
 }
 
 🎯 CRITICAL RULES:
-1. Generate 20-30 nodes with clear parent-child hierarchy
-2. Use real 2025 salary data for India
-3. Include top 5 universities per path (IITs, NITs, AIIMS, private)
-4. Add lateral entry options (Diploma → BTech, BSc → MSc)
-5. Include international pathway options (GRE → MS abroad)
-6. Mark trending careers with fire emoji in insights
-7. **CRITICAL**: Output ONLY valid JSON. No markdown, no code blocks, no extra text before or after JSON
-8. **CRITICAL**: Ensure all strings are properly escaped, no trailing commas, valid array/object syntax
-9. **CRITICAL**: Use double quotes for all keys and string values
-10. **CRITICAL**: Do NOT include any text before the opening { or after the closing }`;
+1. Generate EXACTLY 12-15 nodes — no more, no less
+2. Keep all string values SHORT (summaries under 15 words, labels under 6 words)
+3. Output ONLY valid JSON — no markdown, no code blocks, no text before { or after }
+4. Ensure all strings use double quotes and no trailing commas
+5. Do NOT include universities list or long descriptions — keep each node compact`;
+
+/** Attempt to repair JSON that was cut off mid-output by the model token limit */
+function repairTruncatedJson(raw: string): string {
+  // Track nesting to know what needs closing
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\' && inString) { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+
+  // Remove trailing comma before we close, then close all open structures
+  let repaired = raw.trimEnd().replace(/,\s*$/, '');
+  while (stack.length) repaired += stack.pop();
+  return repaired;
+}
 
 export async function POST(request: NextRequest) {
+
   try {
     const { currentGrade, selectedStream, selectedSubjects, interests, region } = await request.json();
     
-    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
+      throw new Error('GOOGLE_GENAI_API_KEY not configured in environment variables');
     }
 
     const userContext = `
@@ -140,39 +127,14 @@ Output ONLY the JSON schema specified above. NO markdown, NO extra text.`;
 
     const fullPrompt = CAREER_NAVIGATOR_PROMPT + '\n\n' + userContext;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: fullPrompt }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 8192,
-            topP: 0.9,
-            topK: 40,
-          }
-        }),
-      }
-    );
+    const result = await generateWithFallback(fullPrompt, {
+      temperature: 0.7,
+      maxOutputTokens: 65536,
+      topP: 0.9,
+      topK: 40,
+    });
+    let responseText: string = result || '{}';
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error Details:', errorText);
-      throw new Error(`Gemini API failed: ${response.statusText} - ${errorText}`);
-    }
-
-    const result = await response.json();
-    let responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     
     // Clean up response - remove markdown, code fences, extra whitespace
     responseText = responseText
@@ -203,10 +165,18 @@ Output ONLY the JSON schema specified above. NO markdown, NO extra text.`;
     try {
       careerData = JSON.parse(responseText);
     } catch (parseError: any) {
-      console.error('JSON Parse Error:', parseError.message);
-      console.error('Problematic JSON (first 500 chars):', responseText.substring(0, 500));
-      console.error('Problematic JSON (last 500 chars):', responseText.substring(responseText.length - 500));
-      throw new Error(`Failed to parse AI response: ${parseError.message}`);
+      // Attempt to salvage truncated JSON by closing open structures
+      console.warn('Initial parse failed, attempting truncation repair...');
+      const repaired = repairTruncatedJson(responseText);
+      try {
+        careerData = JSON.parse(repaired);
+        console.log('✅ Truncation repair succeeded');
+      } catch {
+        console.error('JSON Parse Error:', parseError.message);
+        console.error('First 300 chars:', responseText.substring(0, 300));
+        console.error('Last 300 chars:', responseText.substring(responseText.length - 300));
+        throw new Error(`Failed to parse AI response: ${parseError.message}`);
+      }
     }
 
     // Validate structure

@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { animationConfig } from '@/lib/animation-config';
 
 interface AvatarProps {
   isThinking?: boolean;

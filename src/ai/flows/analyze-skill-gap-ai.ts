@@ -4,9 +4,9 @@
  * Real-time intelligent skill matching with BigQuery market data
  */
 
-import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { getSkillsForRole, getTrendingSkills } from '@/lib/bigquery/service';
+import { generateWithFallback } from '@/lib/gemini';
 
 // Schema for Gemini AI response
 const SkillGapAnalysisSchema = z.object({
@@ -76,13 +76,12 @@ export async function analyzeSkillGapWithAI(
     industry: string = 'Technology'
 ): Promise<SkillGapAnalysisResult> {
     try {
-        // 1. Fetch real-time job market data from BigQuery
+        // 1. Fetch real-time job market data from BigQuery (falls back to mock if not configured)
         const [jobSkills, trendingSkillsData] = await Promise.all([
             getSkillsForRole(targetRole, industry),
             getTrendingSkills(industry, 20),
         ]);
 
-        // Extract comprehensive skill requirements
         const requiredSkills = jobSkills.flatMap(job => job.required_skills || []);
         const trendingSkills = [
             ...jobSkills.flatMap(job => job.trending_skills || []),
@@ -92,174 +91,87 @@ export async function analyzeSkillGapWithAI(
         ];
         const atsKeywords = jobSkills.flatMap(job => job.ats_keywords || []);
 
-        // Get unique skills
-        const uniqueRequired = [...new Set(requiredSkills)];
-        const uniqueTrending = [...new Set(trendingSkills)];
+        const uniqueRequired = [...new Set(requiredSkills)].slice(0, 30);
+        const uniqueTrending = [...new Set(trendingSkills)].slice(0, 25);
+        const uniqueAts = [...new Set(atsKeywords)].slice(0, 20);
 
-        // 2. Create intelligent Gemini AI prompt
-        const prompt = ai.definePrompt({
-            name: 'analyzeSkillGapPrompt',
-            model: 'googleai/gemini-2.0-flash-exp',
-            input: {
-                schema: z.object({
-                    targetRole: z.string(),
-                    industry: z.string(),
-                    currentSkills: z.array(z.string()),
-                    marketRequiredSkills: z.array(z.string()),
-                    marketTrendingSkills: z.array(z.string()),
-                    atsKeywords: z.array(z.string()),
-                }),
-            },
-            output: {
-                schema: SkillGapAnalysisSchema,
-            },
-            prompt: `
-You are an elite career counselor and skill gap analyst with access to REAL-TIME job market data from BigQuery.
+        // 2. Build prompt
+        const prompt = `
+You are an elite career counselor and skill gap analyst.
 
-**ANALYSIS REQUEST:**
+TARGET ROLE: ${targetRole}
+INDUSTRY: ${industry}
 
-**Target Role:** {{targetRole}}
-**Industry:** {{industry}}
+CANDIDATE'S CURRENT SKILLS:
+${currentSkills.map(s => `• ${s}`).join('\n')}
 
-**Candidate's Current Skills:**
-{{#each currentSkills}}
-• {{this}}
-{{/each}}
+MARKET REQUIRED SKILLS (from job data):
+${uniqueRequired.length > 0 ? uniqueRequired.map(s => `• ${s}`).join('\n') : '• Use general industry knowledge'}
 
----
+TRENDING SKILLS IN ${industry}:
+${uniqueTrending.length > 0 ? uniqueTrending.map(s => `• ${s}`).join('\n') : '• Use general industry knowledge'}
 
-**REAL JOB MARKET DATA (from BigQuery):**
+ATS KEYWORDS FOR ${targetRole}:
+${uniqueAts.length > 0 ? uniqueAts.map(s => `• ${s}`).join('\n') : '• Use general industry knowledge'}
 
-**Skills REQUIRED by Employers (CRITICAL):**
-{{#each marketRequiredSkills}}
-• {{this}}
-{{/each}}
+Perform a comprehensive skill gap analysis and return ONLY a valid JSON object (no markdown, no code blocks) matching this exact structure:
+{
+  "matchPercentage": <number 0-100>,
+  "skillAlignment": <"excellent"|"good"|"fair"|"poor">,
+  "skillBreakdown": {
+    "matchedSkills": [{"skill": "...", "proficiencyLevel": "expert"|"advanced"|"intermediate"|"beginner", "marketDemand": "critical"|"high"|"medium"|"low"}],
+    "missingCriticalSkills": [{"skill": "...", "importance": "must-have"|"highly-recommended"|"nice-to-have", "learnability": "easy"|"moderate"|"challenging", "timeToLearn": "..."}],
+    "emergingSkills": [{"skill": "...", "trendScore": <0-10>, "futureValue": "very-high"|"high"|"medium"|"low"}]
+  },
+  "recommendations": [{"priority": "immediate"|"short-term"|"long-term", "category": "technical"|"soft-skills"|"tools"|"certifications", "action": "...", "rationale": "...", "impact": "high"|"medium"|"low"}],
+  "careerInsights": {
+    "readinessLevel": "ready"|"almost-ready"|"needs-preparation"|"significant-gap",
+    "estimatedTimeToReady": "...",
+    "strengthAreas": ["..."],
+    "weaknessAreas": ["..."],
+    "competitiveAdvantages": ["..."]
+  },
+  "learningPath": [{"phase": "...", "duration": "...", "skills": ["..."], "resources": ["..."]}],
+  "marketContext": {
+    "demandLevel": "very-high"|"high"|"moderate"|"low",
+    "competitionLevel": "very-competitive"|"competitive"|"moderate"|"low",
+    "salaryOutlook": "...",
+    "jobOpenings": "..."
+  }
+}
 
-**Skills TRENDING in {{industry}} (HIGH VALUE):**
-{{#each marketTrendingSkills}}
-• {{this}}
-{{/each}}
+RULES:
+1. Be honest about match percentage — don't inflate it
+2. Be specific in recommendations (e.g., "Learn React.js via freeCodeCamp" not "Learn web dev")
+3. Base all analysis on the market data provided above
+4. Output ONLY the JSON object — no markdown fences, no extra text
+`;
 
-**ATS Keywords for {{targetRole}}:**
-{{#each atsKeywords}}
-• {{this}}
-{{/each}}
-
----
-
-**YOUR TASK:**
-
-Perform a comprehensive, intelligent skill gap analysis:
-
-### 1. **Calculate Match Percentage (0-100%)**
-- Compare candidate's skills to market required skills
-- Weight critical skills higher than nice-to-haves
-- Consider skill variations (e.g., "React" = "React.js" = "ReactJS")
-- Factor in transferable skills
-- Be accurate and realistic
-
-### 2. **Skill Breakdown**
-
-**Matched Skills:**
-- List skills the candidate HAS that match job requirements
-- Assess proficiency level based on skill context
-- Indicate market demand for each skill
-
-**Missing Critical Skills:**
-- Identify MUST-HAVE skills the candidate LACKS
-- Categorize by importance (must-have / highly-recommended / nice-to-have)
-- Estimate learning difficulty
-- Provide realistic time-to-learn estimates
-
-**Emerging Skills:**
-- Identify trending skills that will increase market value
-- Assign trend score (0-10)
-- Assess future value
-
-### 3. **Recommendations**
-
-Provide 5-10 prioritized recommendations:
-- **IMMEDIATE**: Critical gaps that block job applications
-- **SHORT-TERM**: High-impact skills to learn in 1-3 months
-- **LONG-TERM**: Advanced skills for career growth
-
-Categories:
-- Technical skills
-- Soft skills  
-- Tools & technologies
-- Certifications
-
-For each:
-- Specific action to take
-- Clear rationale
-- Expected impact
-
-### 4. **Career Insights**
-
-**Readiness Assessment:**
-- Ready: Can apply now
-- Almost Ready: 1-2 skills away
-- Needs Preparation: 3-6 months needed
-- Significant Gap: 6+ months needed
-
-**Estimate:**
-- Realistic time to become job-ready
-- Strengths to leverage
-- Weaknesses to address
-- Competitive advantages
-
-### 5. **Learning Path**
-
-Create a phased learning plan:
-- Phase 1: Foundation (critical gaps)
-- Phase 2: Advancement (high-value skills)
-- Phase 3: Specialization (emerging tech)
-
-For each phase:
-- Duration
-- Skills to master
-- Resource types (online courses, projects, certifications)
-
-### 6. **Market Context**
-
-Provide insights on:
-- Current demand level for this role
-- Competition level
-- Salary outlook
-- Typical job openings count
-
----
-
-**CRITICAL ANALYSIS RULES:**
-
-1. **Be Honest**: Don't inflate match percentage
-2. **Be Specific**: "Learn React.js" not "Learn web development"
-3. **Be Realistic**: Accurate time estimates
-4. **Be Constructive**: Focus on actionable steps
-5. **Use Market Data**: Base ALL recommendations on the real market data provided
-6. **Consider Context**: Some skills imply others (e.g., React → JavaScript)
-7. **Prioritize Impact**: Focus on skills that matter most
-8. **Be Encouraging**: Highlight strengths while addressing gaps
-
-Return detailed, actionable insights that will genuinely help the candidate!
-`,
+        // 3. Call Gemini with automatic model fallback
+        let responseText = await generateWithFallback(prompt, {
+            temperature: 0.4,
+            maxOutputTokens: 8192,
+            topP: 0.9,
         });
 
-        // 3. Run AI analysis
-        const response = await prompt({
-            targetRole,
-            industry,
-            currentSkills,
-            marketRequiredSkills: uniqueRequired.slice(0, 30),
-            marketTrendingSkills: uniqueTrending.slice(0, 25),
-            atsKeywords: [...new Set(atsKeywords)].slice(0, 20),
-        });
+        // Clean markdown fences if present
+        responseText = responseText
+            .replace(/```json\n?/gi, '')
+            .replace(/```\n?/gi, '')
+            .trim();
 
-        if (!response.output) {
-            throw new Error('Failed to get skill gap analysis from AI');
+        // Extract JSON object
+        const firstBrace = responseText.indexOf('{');
+        const lastBrace = responseText.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            responseText = responseText.substring(firstBrace, lastBrace + 1);
         }
 
-        return response.output;
+        const parsed = JSON.parse(responseText);
+
+        // Validate with zod (coerce/strip unknowns gracefully)
+        const validated = SkillGapAnalysisSchema.parse(parsed);
+        return validated;
 
     } catch (error) {
         console.error('Error analyzing skill gap with AI:', error);
@@ -271,7 +183,7 @@ Return detailed, actionable insights that will genuinely help the candidate!
             skillBreakdown: {
                 matchedSkills: [],
                 missingCriticalSkills: [{
-                    skill: 'Error occurred',
+                    skill: 'Analysis temporarily unavailable',
                     importance: 'must-have',
                     learnability: 'moderate',
                     timeToLearn: 'N/A',
@@ -281,15 +193,15 @@ Return detailed, actionable insights that will genuinely help the candidate!
             recommendations: [{
                 priority: 'immediate',
                 category: 'technical',
-                action: 'Please try again',
-                rationale: 'Analysis failed',
+                action: 'Please try again in a moment',
+                rationale: 'Temporary analysis error',
                 impact: 'high',
             }],
             careerInsights: {
                 readinessLevel: 'significant-gap',
                 estimatedTimeToReady: 'Unable to determine',
                 strengthAreas: [],
-                weaknessAreas: ['Analysis error'],
+                weaknessAreas: ['Analysis error — please retry'],
                 competitiveAdvantages: [],
             },
             learningPath: [],
